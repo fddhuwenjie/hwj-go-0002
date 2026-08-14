@@ -55,6 +55,8 @@ func (s *Service) ReserveOrder(orderID string, lines []Line) (Reservation, error
 		if available < line.Quantity {
 			return Reservation{}, fmt.Errorf("%w: %s needs %d but has %d", ErrInsufficientStock, line.SKU, line.Quantity, available)
 		}
+	}
+	for _, line := range normalized {
 		s.stock[line.SKU] -= line.Quantity
 	}
 
