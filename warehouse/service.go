@@ -96,7 +96,12 @@ func normalizeLines(lines []Line) ([]Line, error) {
 			return nil, fmt.Errorf("%w: SKU %q has quantity %d", ErrInvalidOrder, line.SKU, line.Quantity)
 		}
 		if index, exists := positions[sku]; exists {
-			normalized[index].Quantity += line.Quantity
+			previous := normalized[index].Quantity
+			merged := previous + line.Quantity
+			if merged < previous {
+				return nil, fmt.Errorf("%w: SKU %s quantity overflow", ErrInvalidOrder, line.SKU)
+			}
+			normalized[index].Quantity = merged
 			continue
 		}
 		positions[sku] = len(normalized)

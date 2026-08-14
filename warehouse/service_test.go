@@ -2,6 +2,7 @@ package warehouse_test
 
 import (
 	"errors"
+	"math"
 	"reflect"
 	"testing"
 
@@ -66,6 +67,63 @@ func TestNewServiceRejectsNormalizedDuplicateSKU(t *testing.T) {
 	_, err := warehouse.NewService(map[string]int{"tape": 2, " TAPE ": 3})
 	if !errors.Is(err, warehouse.ErrInvalidInventory) {
 		t.Fatalf("expected ErrInvalidInventory, got %v", err)
+	}
+}
+
+func TestReserveOrderRejectsOverflowingQuantity(t *testing.T) {
+	service := mustService(t, map[string]int{"BOX": math.MaxInt})
+	wantStock := []warehouse.StockLevel{{SKU: "BOX", Available: math.MaxInt}}
+
+	_, err := service.ReserveOrder("order-overflow", []warehouse.Line{
+		{SKU: "BOX", Quantity: math.MaxInt},
+		{SKU: "BOX", Quantity: 1},
+	})
+	if !errors.Is(err, warehouse.ErrInvalidOrder) {
+		t.Fatalf("expected ErrInvalidOrder, got %v", err)
+	}
+
+	if got := service.Snapshot(); !reflect.DeepEqual(got, wantStock) {
+		t.Fatalf("stock changed after failed reservation: %#v", got)
+	}
+	if _, exists := service.Reservation("order-overflow"); exists {
+		t.Fatalf("order recorded after failed reservation")
+	}
+}
+
+func TestReserveOrderRejectsOverflowAcrossManyLines(t *testing.T) {
+	service := mustService(t, map[string]int{"BOX": math.MaxInt})
+	half := math.MaxInt / 2
+	rest := math.MaxInt - half
+	_, err := service.ReserveOrder("order-many", []warehouse.Line{
+		{SKU: "BOX", Quantity: half},
+		{SKU: "BOX", Quantity: rest},
+		{SKU: "BOX", Quantity: 1},
+	})
+	if !errors.Is(err, warehouse.ErrInvalidOrder) {
+		t.Fatalf("expected ErrInvalidOrder, got %v", err)
+	}
+	if got := service.Snapshot(); !reflect.DeepEqual(got, []warehouse.StockLevel{{SKU: "BOX", Available: math.MaxInt}}) {
+		t.Fatalf("stock changed after failed reservation: %#v", got)
+	}
+}
+
+func TestReserveOrderAcceptsExactMaxIntSplit(t *testing.T) {
+	service := mustService(t, map[string]int{"BOX": math.MaxInt})
+	half := math.MaxInt / 2
+	rest := math.MaxInt - half
+	reservation, err := service.ReserveOrder("order-split", []warehouse.Line{
+		{SKU: "BOX", Quantity: half},
+		{SKU: "BOX", Quantity: rest},
+	})
+	if err != nil {
+		t.Fatalf("ReserveOrder returned an error: %v", err)
+	}
+	wantLines := []warehouse.Line{{SKU: "BOX", Quantity: math.MaxInt}}
+	if !reflect.DeepEqual(reservation.Lines, wantLines) {
+		t.Fatalf("unexpected reservation lines: %#v", reservation.Lines)
+	}
+	if got := service.Snapshot(); !reflect.DeepEqual(got, []warehouse.StockLevel{{SKU: "BOX", Available: 0}}) {
+		t.Fatalf("unexpected stock: %#v", got)
 	}
 }
 
