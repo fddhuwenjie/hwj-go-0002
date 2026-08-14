@@ -69,6 +69,47 @@ func TestNewServiceRejectsNormalizedDuplicateSKU(t *testing.T) {
 	}
 }
 
+func TestReserveOrderReturnIsIsolatedFromStoredRecord(t *testing.T) {
+	service := mustService(t, map[string]int{"BOX": 10, "TAPE": 4})
+	reservation, err := service.ReserveOrder("order-isolated", []warehouse.Line{
+		{SKU: "BOX", Quantity: 2},
+		{SKU: "TAPE", Quantity: 1},
+	})
+	if err != nil {
+		t.Fatalf("ReserveOrder returned an error: %v", err)
+	}
+	wantLines := []warehouse.Line{{SKU: "BOX", Quantity: 2}, {SKU: "TAPE", Quantity: 1}}
+	if !reflect.DeepEqual(reservation.Lines, wantLines) {
+		t.Fatalf("unexpected reservation lines: %#v", reservation.Lines)
+	}
+
+	// The caller is free to transform the returned Lines for display.
+	reservation.Lines[0].Quantity = 999
+	reservation.Lines[1].SKU = "MUTATED"
+
+	stored, ok := service.Reservation("order-isolated")
+	if !ok {
+		t.Fatalf("Reservation not found for order-isolated")
+	}
+	if !reflect.DeepEqual(stored.Lines, wantLines) {
+		t.Fatalf("stored reservation was mutated by caller: %#v", stored.Lines)
+	}
+
+	// Querying again keeps returning isolated copies.
+	again, ok := service.Reservation("order-isolated")
+	if !ok {
+		t.Fatalf("Reservation not found for order-isolated on second lookup")
+	}
+	again.Lines[0].Quantity = -1
+	storedAgain, ok := service.Reservation("order-isolated")
+	if !ok {
+		t.Fatalf("Reservation not found for order-isolated on third lookup")
+	}
+	if !reflect.DeepEqual(storedAgain.Lines, wantLines) {
+		t.Fatalf("stored reservation was mutated by second caller: %#v", storedAgain.Lines)
+	}
+}
+
 func mustService(t *testing.T, stock map[string]int) *warehouse.Service {
 	t.Helper()
 	service, err := warehouse.NewService(stock)

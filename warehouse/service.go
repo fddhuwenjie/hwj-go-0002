@@ -62,7 +62,9 @@ func (s *Service) ReserveOrder(orderID string, lines []Line) (Reservation, error
 
 	reservation := Reservation{OrderID: orderID, Lines: cloneLines(normalized)}
 	s.reservations[orderID] = reservation
-	return reservation, nil
+	// Return an independent copy so callers can freely transform the returned
+	// Lines without mutating the service-owned record.
+	return cloneReservation(reservation), nil
 }
 
 // Reservation returns a previously committed order reservation.
