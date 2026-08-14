@@ -2,6 +2,7 @@ package warehouse
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -96,6 +97,9 @@ func normalizeLines(lines []Line) ([]Line, error) {
 			return nil, fmt.Errorf("%w: SKU %q has quantity %d", ErrInvalidOrder, line.SKU, line.Quantity)
 		}
 		if index, exists := positions[sku]; exists {
+			if line.Quantity > math.MaxInt-normalized[index].Quantity {
+				return nil, fmt.Errorf("%w: quantity overflow for %s", ErrInvalidOrder, sku)
+			}
 			normalized[index].Quantity += line.Quantity
 			continue
 		}
